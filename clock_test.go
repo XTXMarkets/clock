@@ -2,7 +2,6 @@ package clock
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,7 +21,7 @@ func TestClock_After(t *testing.T) {
 	}()
 	gosched()
 
-	<-New().After(20 * time.Millisecond)
+	<-RealClock().After(20 * time.Millisecond)
 	if !ok {
 		t.Fatal("too early")
 	}
@@ -43,7 +42,7 @@ func TestClock_AfterFunc(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	New().AfterFunc(20*time.Millisecond, func() {
+	RealClock().AfterFunc(20*time.Millisecond, func() {
 		wg.Done()
 	})
 	wg.Wait()
@@ -55,7 +54,7 @@ func TestClock_AfterFunc(t *testing.T) {
 // Ensure that the clock's time matches the standary library.
 func TestClock_Now(t *testing.T) {
 	a := time.Now().Round(time.Second)
-	b := New().Now().Round(time.Second)
+	b := RealClock().Now().Round(time.Second)
 	if !a.Equal(b) {
 		t.Errorf("not equal: %s != %s", a, b)
 	}
@@ -74,7 +73,7 @@ func TestClock_Sleep(t *testing.T) {
 	}()
 	gosched()
 
-	New().Sleep(20 * time.Millisecond)
+	RealClock().Sleep(20 * time.Millisecond)
 	if !ok {
 		t.Fatal("too early")
 	}
@@ -93,7 +92,7 @@ func TestClock_Tick(t *testing.T) {
 	}()
 	gosched()
 
-	c := New().Tick(20 * time.Millisecond)
+	c := RealClock().Tick(20 * time.Millisecond)
 	<-c
 	<-c
 	if !ok {
@@ -114,7 +113,7 @@ func TestClock_Ticker(t *testing.T) {
 	}()
 	gosched()
 
-	ticker := New().Ticker(50 * time.Millisecond)
+	ticker := RealClock().NewTicker(50 * time.Millisecond)
 	<-ticker.C
 	<-ticker.C
 	if !ok {
@@ -124,14 +123,12 @@ func TestClock_Ticker(t *testing.T) {
 
 // Ensure that the clock's ticker can stop correctly.
 func TestClock_Ticker_Stp(t *testing.T) {
-	var ok bool
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		ok = true
 	}()
 	gosched()
 
-	ticker := New().Ticker(20 * time.Millisecond)
+	ticker := RealClock().NewTicker(20 * time.Millisecond)
 	<-ticker.C
 	ticker.Stop()
 	select {
@@ -154,7 +151,7 @@ func TestClock_Timer(t *testing.T) {
 	}()
 	gosched()
 
-	timer := New().Timer(20 * time.Millisecond)
+	timer := RealClock().NewTimer(20 * time.Millisecond)
 	<-timer.C
 	if !ok {
 		t.Fatal("too early")
@@ -167,13 +164,11 @@ func TestClock_Timer(t *testing.T) {
 
 // Ensure that the clock's timer can be stopped.
 func TestClock_Timer_Stop(t *testing.T) {
-	var ok bool
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		ok = true
 	}()
 
-	timer := New().Timer(20 * time.Millisecond)
+	timer := RealClock().NewTimer(20 * time.Millisecond)
 	if !timer.Stop() {
 		t.Fatal("timer not running")
 	}
@@ -200,7 +195,7 @@ func TestClock_Timer_Reset(t *testing.T) {
 	}()
 	gosched()
 
-	timer := New().Timer(10 * time.Millisecond)
+	timer := RealClock().NewTimer(10 * time.Millisecond)
 	if !timer.Reset(20 * time.Millisecond) {
 		t.Fatal("timer not running")
 	}
@@ -214,7 +209,7 @@ func TestClock_Timer_Reset(t *testing.T) {
 // Ensure that the mock's After channel sends at the correct time.
 func TestMock_After(t *testing.T) {
 	var ok int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Create a channel to execute after 10 mock seconds.
 	ch := clock.After(10 * time.Second)
@@ -238,7 +233,7 @@ func TestMock_After(t *testing.T) {
 
 // Ensure that the mock's After channel doesn't block on write.
 func TestMock_UnusedAfter(t *testing.T) {
-	mock := NewMock()
+	mock := NewMock(0, 0)
 	mock.After(1 * time.Millisecond)
 
 	done := make(chan bool, 1)
@@ -257,7 +252,7 @@ func TestMock_UnusedAfter(t *testing.T) {
 // Ensure that the mock's AfterFunc executes at the correct time.
 func TestMock_AfterFunc(t *testing.T) {
 	var ok int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Execute function after duration.
 	clock.AfterFunc(10*time.Second, func() {
@@ -280,7 +275,7 @@ func TestMock_AfterFunc(t *testing.T) {
 // Ensure that the mock's AfterFunc doesn't execute if stopped.
 func TestMock_AfterFunc_Stop(t *testing.T) {
 	// Execute function after duration.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	timer := clock.AfterFunc(10*time.Second, func() {
 		t.Fatal("unexpected function execution")
 	})
@@ -289,12 +284,11 @@ func TestMock_AfterFunc_Stop(t *testing.T) {
 	// Stop timer & move clock forward.
 	timer.Stop()
 	clock.Add(10 * time.Second)
-	gosched()
 }
 
 // Ensure that the mock's current time can be changed.
 func TestMock_Now(t *testing.T) {
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	if now := clock.Now(); !now.Equal(time.Unix(0, 0)) {
 		t.Fatalf("expected epoch, got: %v", now)
 	}
@@ -307,7 +301,7 @@ func TestMock_Now(t *testing.T) {
 }
 
 func TestMock_Since(t *testing.T) {
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	beginning := clock.Now()
 	clock.Add(500 * time.Second)
@@ -319,7 +313,7 @@ func TestMock_Since(t *testing.T) {
 // Ensure that the mock can sleep for the correct time.
 func TestMock_Sleep(t *testing.T) {
 	var ok int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Create a channel to execute after 10 mock seconds.
 	go func() {
@@ -344,7 +338,7 @@ func TestMock_Sleep(t *testing.T) {
 // Ensure that the mock's Tick channel sends at the correct time.
 func TestMock_Tick(t *testing.T) {
 	var n int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Create a channel to increment every 10 seconds.
 	go func() {
@@ -378,11 +372,11 @@ func TestMock_Tick(t *testing.T) {
 // Ensure that the mock's Ticker channel sends at the correct time.
 func TestMock_Ticker(t *testing.T) {
 	var n int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Create a channel to increment every microsecond.
 	go func() {
-		ticker := clock.Ticker(1 * time.Microsecond)
+		ticker := clock.NewTicker(1 * time.Microsecond)
 		for {
 			<-ticker.C
 			atomic.AddInt32(&n, 1)
@@ -399,8 +393,8 @@ func TestMock_Ticker(t *testing.T) {
 
 // Ensure that the mock's Ticker channel won't block if not read from.
 func TestMock_Ticker_Overflow(t *testing.T) {
-	clock := NewMock()
-	ticker := clock.Ticker(1 * time.Microsecond)
+	clock := NewMock(0, 0)
+	ticker := clock.NewTicker(1 * time.Microsecond)
 	clock.Add(10 * time.Microsecond)
 	ticker.Stop()
 }
@@ -408,10 +402,10 @@ func TestMock_Ticker_Overflow(t *testing.T) {
 // Ensure that the mock's Ticker can be stopped.
 func TestMock_Ticker_Stop(t *testing.T) {
 	var n int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	// Create a channel to increment every second.
-	ticker := clock.Ticker(1 * time.Second)
+	ticker := clock.NewTicker(1 * time.Second)
 	go func() {
 		for {
 			<-ticker.C
@@ -438,11 +432,11 @@ func TestMock_Ticker_Stop(t *testing.T) {
 // Ensure that multiple tickers can be used together.
 func TestMock_Ticker_Multi(t *testing.T) {
 	var n int32
-	clock := NewMock()
+	clock := NewMock(0, 0)
 
 	go func() {
-		a := clock.Ticker(1 * time.Microsecond)
-		b := clock.Ticker(3 * time.Microsecond)
+		a := clock.NewTicker(1 * time.Microsecond)
+		b := clock.NewTicker(3 * time.Microsecond)
 
 		for {
 			select {
@@ -457,7 +451,6 @@ func TestMock_Ticker_Multi(t *testing.T) {
 
 	// Move clock forward.
 	clock.Add(10 * time.Microsecond)
-	gosched()
 	if atomic.LoadInt32(&n) != 310 {
 		t.Fatalf("unexpected: %d", n)
 	}
@@ -465,7 +458,7 @@ func TestMock_Ticker_Multi(t *testing.T) {
 
 func ExampleMock_After() {
 	// Create a new mock clock.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	count := 0
 
 	ready := make(chan struct{})
@@ -497,7 +490,7 @@ func ExampleMock_After() {
 
 func ExampleMock_AfterFunc() {
 	// Create a new mock clock.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	count := 0
 
 	// Execute a function after 10 mock seconds.
@@ -520,7 +513,7 @@ func ExampleMock_AfterFunc() {
 
 func ExampleMock_Sleep() {
 	// Create a new mock clock.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	count := 0
 
 	// Execute a function after 10 mock seconds.
@@ -544,13 +537,13 @@ func ExampleMock_Sleep() {
 
 func ExampleMock_Ticker() {
 	// Create a new mock clock.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	count := 0
 
 	ready := make(chan struct{})
 	// Increment count every mock second.
 	go func() {
-		ticker := clock.Ticker(1 * time.Second)
+		ticker := clock.NewTicker(1 * time.Second)
 		close(ready)
 		for {
 			<-ticker.C
@@ -574,13 +567,13 @@ func ExampleMock_Ticker() {
 
 func ExampleMock_Timer() {
 	// Create a new mock clock.
-	clock := NewMock()
+	clock := NewMock(0, 0)
 	count := 0
 
 	ready := make(chan struct{})
 	// Increment count after a mock second.
 	go func() {
-		timer := clock.Timer(1 * time.Second)
+		timer := clock.NewTimer(1 * time.Second)
 		close(ready)
 		<-timer.C
 		count++
@@ -595,5 +588,5 @@ func ExampleMock_Timer() {
 	// Count is 1 after 10 seconds
 }
 
-func warn(v ...interface{})              { fmt.Fprintln(os.Stderr, v...) }
-func warnf(msg string, v ...interface{}) { fmt.Fprintf(os.Stderr, msg+"\n", v...) }
+// Sleep momentarily so that other goroutines can process.
+func gosched() { time.Sleep(1 * time.Millisecond) }
